@@ -310,6 +310,105 @@ def search():
 
 @app.route("/api/students")
 def api_student_list():
-    return "[]"
+    """Câu 7: API danh sách sinh viên, hỗ trợ lọc lop và min_avg."""
+    lop_param = request.args.get("lop")
+    min_avg = None
+
+    # Phân biệt tham số min_avg: có mặt nhưng sai kiểu thì trả 400
+    if "min_avg" in request.args:
+        raw_min = request.args.get("min_avg")
+        try:
+            min_avg = float(raw_min)
+        except (ValueError, TypeError):
+            abort(400, description="Tham số min_avg phải là số thực.")
+
+    results = []
+    for mssv in STUDENTS:
+        summary = student_summary(mssv)
+
+        if lop_param is not None:
+            if summary["lop"].lower() != lop_param.lower():
+                continue
+
+        if min_avg is not None:
+            if summary["average"] is None or summary["average"] < min_avg:
+                continue
+
+        results.append(summary)
+
+    return jsonify(results)
+
+
+@app.route("/api/students/<mssv>")
+def api_student_detail(mssv):
+    """Câu 7: API chi tiết một sinh viên."""
+    if mssv not in STUDENTS:
+        abort(404, description=f"Không có sinh viên với MSSV = {mssv}.")
+    return jsonify(student_summary(mssv))
+
+
+@app.route(
+    "/api/students/<mssv>/scores/<course>", methods=["GET", "PUT", "DELETE"]
+)
+def api_score_course(mssv, course):
+    """Câu 8: Quản lý điểm một học phần."""
+    if mssv not in STUDENTS:
+        abort(404, description=f"Không có sinh viên với MSSV = {mssv}.")
+
+    course_key = course.upper()
+    student = STUDENTS[mssv]
+
+    # GET: Xem điểm môn học
+    if request.method == "GET":
+        if course_key not in student["scores"]:
+            abort(404, description=f"Học phần {course_key} chưa có điểm.")
+        return jsonify(
+            {
+                "mssv": mssv,
+                "course": course_key,
+                "score": student["scores"][course_key],
+            }
+        )
+
+    # PUT: Thêm hoặc sửa điểm
+    if request.method == "PUT":
+        raw_score = request.args.get("score")
+        if raw_score is None:
+            abort(400, description="Thiếu tham số điểm (score).")
+        try:
+            score = float(raw_score)
+        except (ValueError, TypeError):
+            abort(400, description="Điểm phải là số thực hợp lệ.")
+
+        if score < 0 or score > 10:
+            abort(400, description="Điểm phải nằm trong đoạn [0, 10].")
+
+        is_new = course_key not in student["scores"]
+        student["scores"][course_key] = score
+        new_avg = average(student["scores"])
+
+        data = {
+            "mssv": mssv,
+            "course": course_key,
+            "score": score,
+            "average": new_avg,
+        }
+
+        if is_new:
+            res = jsonify(data)
+            res.status_code = 201
+            res.headers["Location"] = url_for(
+                "api_score_course", mssv=mssv, course=course_key
+            )
+            return res
+
+        return jsonify(data), 200
+
+    # DELETE: Xóa điểm môn học
+    if request.method == "DELETE":
+        if course_key not in student["scores"]:
+            abort(404, description=f"Học phần {course_key} chưa có điểm.")
+        del student["scores"][course_key]
+        return "", 204
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
