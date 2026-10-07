@@ -314,7 +314,6 @@ def api_student_list():
     lop_param = request.args.get("lop")
     min_avg = None
 
-    # Phân biệt tham số min_avg: có mặt nhưng sai kiểu thì trả 400
     if "min_avg" in request.args:
         raw_min = request.args.get("min_avg")
         try:
@@ -358,7 +357,6 @@ def api_score_course(mssv, course):
     course_key = course.upper()
     student = STUDENTS[mssv]
 
-    # GET: Xem điểm môn học
     if request.method == "GET":
         if course_key not in student["scores"]:
             abort(404, description=f"Học phần {course_key} chưa có điểm.")
@@ -370,7 +368,6 @@ def api_score_course(mssv, course):
             }
         )
 
-    # PUT: Thêm hoặc sửa điểm
     if request.method == "PUT":
         raw_score = request.args.get("score")
         if raw_score is None:
@@ -404,11 +401,32 @@ def api_score_course(mssv, course):
 
         return jsonify(data), 200
 
-    # DELETE: Xóa điểm môn học
     if request.method == "DELETE":
         if course_key not in student["scores"]:
             abort(404, description=f"Học phần {course_key} chưa có điểm.")
         del student["scores"][course_key]
         return "", 204
+@app.errorhandler(400)
+@app.errorhandler(404)
+@app.errorhandler(405)
+def handle_error(error):
+    """Một hàm xử lý chung cho lỗi 400, 404, 405 theo định dạng URL."""
+    titles = {
+        400: "Dữ liệu không hợp lệ",
+        404: "Không tìm thấy",
+        405: "Phương thức không được hỗ trợ",
+    }
+    title = titles.get(error.code, "Lỗi")
+    detail = error.description or ""
+
+    if request.path.startswith("/api/"):
+        return jsonify({"error": title, "detail": detail}), error.code
+
+    body = f"""
+    <h1>{escape(str(error.code))} - {escape(title)}</h1>
+    <p>{escape(detail)}</p>
+    """
+    return layout(title, body), error.code
+
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
